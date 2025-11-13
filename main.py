@@ -48,8 +48,7 @@ def get_multi_channel_context(client, limit_hours=24):
                     channel_tuple = (channel["id"], channel["name"])
                     if channel_tuple not in channels_to_check:
                         channels_to_check.append(channel_tuple)
-        except Exception as e:
-            print(f"DEBUG: Error getting user conversations: {str(e)}")
+        except Exception:
             pass
 
         # Process channels we found
@@ -79,14 +78,11 @@ def get_multi_channel_context(client, limit_hours=24):
 
                     context[channel_name] = {"recent_activity": recent_activity}
 
-            except Exception as e:
-                # If we can't access the channel, skip it
-                print(f"DEBUG: Can't access channel {channel_name}: {str(e)}")
+            except Exception:
                 continue
 
         return context
-    except Exception as e:
-        print(f"DEBUG: Error in get_multi_channel_context: {str(e)}")
+    except Exception:
         return {}
 
 def extract_user_messages(client, channel_id, bot_user_id):
@@ -158,18 +154,10 @@ def handle_app_mention_events(event, client, say):
             )
 
     except Exception as e:
-        response = f"Error: {str(e)}"
+        response = f"Solomon encountered an error: {str(e)}"
 
-    client.chat_postMessage(
-        channel=event["channel"],
-        thread_ts=event["ts"],
-        text=response
-    )
-    client.reactions_remove(
-        channel=event["channel"],
-        timestamp=event["ts"],
-        name="eyes"
-    )
+    client.chat_postMessage(channel=event["channel"], text=response)
+    client.reactions_remove(channel=event["channel"], timestamp=event["ts"], name="eyes")
 
 @app.message(re.compile(r"^solomon", re.IGNORECASE))
 def handle_solomon_chat(message, client, say):
@@ -177,7 +165,7 @@ def handle_solomon_chat(message, client, say):
     user_query = re.sub(r"^solomon\s*", "", message["text"], flags=re.IGNORECASE).strip()
 
     if not user_query:
-        say(text="👋 Solomon here. Ask me anything or @mention me to analyze conversations for conflicts and solutions.", thread_ts=message["ts"])
+        say(text="👋 Solomon here. Ask me anything or @mention me to analyze conversations for conflicts and solutions.")
         return
 
     if user_query.lower() in ["help", "status", "health"]:
@@ -185,46 +173,17 @@ def handle_solomon_chat(message, client, say):
         channel_count = len(channel_context)
         if channel_count > 0:
             channel_names = ", ".join(channel_context.keys())
-            say(text=f"🔍 Monitoring {channel_count} channels: {channel_names}\n🤝 Ready to mediate conflicts and provide diplomatic solutions", thread_ts=message["ts"])
+            say(text=f"🔍 Monitoring {channel_count} channels: {channel_names}\n🤝 Ready to mediate conflicts and provide diplomatic solutions")
         else:
-            say(text=f"⚠️ Not detecting any accessible channels. Bot needs to be invited to channels with `/invite @botname`\n🤝 Ready to mediate conflicts when channels are accessible", thread_ts=message["ts"])
-        return
-
-    if user_query.lower() == "debug":
-        try:
-            # Try public channels only first
-            channels_response = client.conversations_list(types="public_channel", exclude_archived=True)
-            member_channels = []
-            non_member_channels = []
-
-            if channels_response["ok"]:
-                for channel in channels_response["channels"]:
-                    if channel.get("is_member"):
-                        member_channels.append(channel["name"])
-                    else:
-                        non_member_channels.append(channel["name"])
-
-                debug_info = f"📊 Channel Access Debug (Public Channels Only):\n"
-                debug_info += f"✅ Member of: {', '.join(member_channels) if member_channels else 'None'}\n"
-                debug_info += f"❌ Not member: {', '.join(non_member_channels[:5]) if non_member_channels else 'None'}"
-                if len(non_member_channels) > 5:
-                    debug_info += f" (and {len(non_member_channels)-5} more)"
-                debug_info += f"\n\n💡 To add bot to channels: `/invite @botname`"
-                debug_info += f"\n🔒 Private channels need `groups:read` scope"
-            else:
-                debug_info = f"❌ API Error: {channels_response.get('error', 'Unknown')}"
-
-            say(text=debug_info, thread_ts=message["ts"])
-        except Exception as e:
-            say(text=f"Debug error: {str(e)}", thread_ts=message["ts"])
+            say(text=f"⚠️ Not detecting any accessible channels. Bot needs to be invited to channels with `/invite @botname`\n🤝 Ready to mediate conflicts when channels are accessible")
         return
 
     response = chat(user_query)
-    say(text=response, thread_ts=message["ts"])
+    say(text=response)
 
 @app.event("message")
-def handle_message_events(body, logger):
-    """Handle regular messages to extract URLs and build context"""
+def handle_message_events(body, logger, client, say):
+    """Handle regular messages to extract URLs and build context, and catch @mentions"""
     event = body.get("event", {})
 
     # Skip bot messages and messages we've already handled
@@ -233,15 +192,63 @@ def handle_message_events(body, logger):
         not event.get("text")):
         return
 
-    # Extract URLs from messages for future context
     text = event.get("text", "")
+
+    # Check if this is an @mention to our bot
+    bot_info = client.auth_test()
+    if bot_info["ok"]:
+        bot_user_id = bot_info["user_id"]
+        bot_mention_pattern = f"<@{bot_user_id}>"
+
+        if bot_mention_pattern in text:
+            # Handle the @mention through message event
+            try:
+                # Extract user messages from channel
+                channel_id = event.get("channel")
+                user_messages, user_ids = extract_user_messages(client, channel_id, bot_user_id)
+
+                if not user_messages:
+                    response = "No user messages found in this conversation."
+                else:
+                    # Get user names
+                    user_names = {}
+                    for user_id in user_ids:
+                        try:
+                            user_info = client.users_info(user=user_id)
+                            if user_info["ok"]:
+                                user_names[user_id] = (user_info["user"].get("real_name") or
+                                                       user_info["user"].get("name", user_id))
+                        except:
+                            user_names[user_id] = user_id
+
+                    # Group messages by user
+                    messages_by_user = defaultdict(list)
+                    for user_id, msg_text in user_messages:
+                        messages_by_user[user_id].append(msg_text)
+
+                    # Get multi-channel context
+                    channel_context = get_multi_channel_context(client)
+
+                    # Analyze with Solomon's conflict moderation
+                    response = analyze_conversation_with_context(
+                        messages_by_user, user_names, channel_context
+                    )
+
+                # Post response in channel
+                client.chat_postMessage(channel=channel_id, text=response)
+
+            except Exception as e:
+                client.chat_postMessage(
+                    channel=event.get("channel"),
+                    text=f"Solomon encountered an error: {str(e)}"
+                )
+
+            return  # Don't process as regular message
+
+    # Extract URLs from messages for future context
     urls = re.findall(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', text)
-
     if urls:
-        logger.info(f"URLs detected in channel {event.get('channel')}: {urls}")
-
-    # Log for debugging (optional)
-    # logger.info(f"Message received: {text[:50]}...")
+        logger.info(f"URLs detected: {urls}")
 
 handler = SocketModeHandler(app, app_token)
 handler.start()

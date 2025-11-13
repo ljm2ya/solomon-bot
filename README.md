@@ -8,7 +8,7 @@ A compact Slack bot that provides diplomatic conflict resolution and conversatio
 🔍 **Multi-Channel Context**: Gathers conversation context from all accessible channels for grounded responses
 📎 **URL Extraction**: Automatically detects and includes URLs from messages for enhanced context
 💬 **Dual Commands**: `@mention` for full analysis or `solomon [question]` for direct chat
-⚡ **Compact Code**: 112 lines of core logic with minimal dependencies
+💌 **Direct Replies**: Responds directly in channel (no threading) for natural conversation flow
 
 ## Quick Setup
 
@@ -16,12 +16,9 @@ A compact Slack bot that provides diplomatic conflict resolution and conversatio
 # 1. Install dependencies
 pip install -r requirements.txt
 
-# 2. Create .env file with your tokens
-cat > .env << EOF
-OPENAI_API_KEY=sk-your-openai-key
-BOT_TOKEN=xoxb-your-bot-token
-APP_TOKEN=xapp-your-app-token
-EOF
+# 2. Copy and configure environment
+cp .env.example .env
+# Edit .env with your actual tokens
 
 # 3. Run bot
 python main.py
@@ -47,9 +44,6 @@ groups:read, users.read, conversations.read
 
 # Check status and accessible channels
 solomon help
-
-# Debug channel access issues
-solomon debug
 
 # Conflict analysis - mention in any conversation
 @solomon

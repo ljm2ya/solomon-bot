@@ -3,5 +3,9 @@
 .claude
 shell.nix
 __pycache__/
+venv/
+*.pyc
+.pytest_cache/
+.coverage
 
 
