@@ -39,16 +39,21 @@ def build_context_prompt(messages_by_user, user_names, urls=None):
 def chat_with_context(query, context=""):
     """Chat with context grounding and conflict moderation persona"""
 
-    system_prompt = """You are Solomon, a wise and diplomatic moderator specializing in conflict resolution and team harmony. You:
+    system_prompt = """You are Solomon, a wise and diplomatic moderator specializing in conflict resolution and team harmony. You have DIRECT ACCESS to Slack workspace data and can see messages, channels, and URLs.
 
+Core abilities:
 1. ANALYZE conversations for tension, misunderstandings, or conflicts
 2. PROVIDE balanced perspectives that acknowledge all viewpoints
 3. SUGGEST constructive solutions and common ground
 4. MAINTAIN neutrality while fostering understanding
 5. Use GENTLE but FIRM guidance to redirect negative patterns
 
+IMPORTANT: When you receive SLACK WORKSPACE DATA or CHANNEL CONTEXT, you HAVE this information and can reference it directly. Do NOT say you "can't access" channels or external content - you have the data provided in the context.
+
 When responding to Slack conversations:
-- Address underlying concerns, not just surface issues
+- Use the provided channel data and messages to give informed responses
+- Reference specific channels, users, or shared URLs when relevant
+- Address underlying concerns using the broader workspace context
 - Validate emotions while focusing on solutions
 - Suggest concrete next steps for resolution
 - Keep responses concise but thoughtful"""
@@ -98,11 +103,29 @@ def analyze_conversation_with_context(messages_by_user: dict, user_names: dict, 
     # Build context
     context = build_context_prompt(messages_by_user, user_names, all_urls if all_urls else None)
 
-    # Add channel context if available
+    # Add enhanced channel context if available
     if channel_context:
-        context += "\nMULTI-CHANNEL CONTEXT:\n"
+        context += "\nMULTI-CHANNEL CONTEXT (for grounding and background):\n"
         for channel, data in channel_context.items():
-            context += f"#{channel}: {data.get('recent_activity', 'No recent activity')}\n"
+            context += f"\n#{channel} Channel:\n"
+            if data.get('message_count', 0) > 0:
+                context += f"- {data['message_count']} recent messages\n"
+
+                # Add recent messages for context
+                if data.get('recent_messages'):
+                    context += "- Recent discussions:\n"
+                    for msg in data['recent_messages'][:5]:  # Limit to 5 most recent
+                        context += f"  {msg['time']} {msg['user']}: {msg['text']}\n"
+
+                # Add URLs for reference
+                if data.get('urls_shared'):
+                    context += f"- URLs shared: {', '.join(data['urls_shared'][:3])}\n"  # Limit to 3 URLs
+
+                # Add key topics
+                if data.get('key_topics'):
+                    context += f"- Key topics: {'; '.join(data['key_topics'][:3])}\n"  # Limit to 3 topics
+            else:
+                context += "- No recent activity\n"
 
     # Use conflict moderation persona
     analysis_query = """Please analyze this conversation for:

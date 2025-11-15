@@ -1,69 +1,115 @@
 # Solomon Bot - AI Conflict Mediator
 
-A compact Slack bot that provides diplomatic conflict resolution and conversation analysis with multi-channel context grounding.
+A compact Slack bot that provides diplomatic conflict resolution and conversation analysis with intelligent context grounding.
 
 ## Features
 
 🤝 **Conflict Mediation**: Wise diplomatic moderator persona that analyzes tensions and suggests constructive solutions
-🔍 **Multi-Channel Context**: Gathers conversation context from all accessible channels for grounded responses
-📎 **URL Extraction**: Automatically detects and includes URLs from messages for enhanced context
+🧠 **ReAct Intelligence**: AI-powered query analysis that determines when and where to gather context
+🔍 **Smart Context Search**: 3-phase adaptive search (priority → all channels → unlimited history)
+🌐 **URL Content Fetching**: Automatically fetches and summarizes GitHub READMEs and web content
+📎 **Multi-Channel Grounding**: Gathers conversation context from all accessible channels
 💬 **Dual Commands**: `@mention` for full analysis or `solomon [question]` for direct chat
-💌 **Direct Replies**: Responds directly in channel (no threading) for natural conversation flow
 
 ## Quick Setup
 
+### Option 1: Socket Mode (Easiest)
 ```bash
-# 1. Install dependencies
-pip install -r requirements.txt
+# 1. Enter dev environment
+nix-shell
 
 # 2. Copy and configure environment
 cp .env.example .env
-# Edit .env with your actual tokens
+# Edit .env with APP_TOKEN, BOT_TOKEN, OPENAI_API_KEY
 
 # 3. Run bot
 python main.py
+```
+
+### Option 2: Webhooks with ngrok
+```bash
+# 1. Enter dev environment
+nix-shell
+
+# 2. Start webhook server
+python webhook_server.py
+
+# 3. Expose with ngrok (new terminal)
+ngrok http 3000
+
+# 4. Configure Slack Event Subscriptions
+# Use: https://your-ngrok-url.ngrok.io/slack/events
 ```
 
 ## Slack App Configuration
 
 **Required OAuth Scopes:**
 ```
-app_mentions:read, channels:history, channels:read,
+app_mentions:read, channels:history, channels:read, channels:join,
 chat:write, reactions:read, reactions:write,
 groups:read, users.read, conversations.read
 ```
 
-**Event Subscriptions:** `app_mention`, `message`
-**Socket Mode:** Enable for real-time events
+**Event Subscriptions:** `app_mention`, `message`, `channel_created`
+**Choose:** Socket Mode OR Webhook Events (not both)
 
 ## Usage Commands
 
 ```bash
-# Add bot to channels
-/invite @solomon
+# Basic commands
+solomon help                          # Status and accessible channels
+@solomon                             # Analyze conversation for conflicts
 
-# Check status and accessible channels
-solomon help
+# Content analysis (with URL fetching)
+solomon summarize last link's readme  # Fetch and summarize GitHub README
+solomon find any github links         # Search all channels + fetch content
+solomon what does that shared link do # Analyze URLs in context
 
-# Conflict analysis - mention in any conversation
-@solomon
-
-# Direct questions without @mention
-solomon how should we handle this deadline conflict?
-solomon what's the best approach for team communication?
+# General questions (no context needed)
+solomon how to handle deadline conflicts
+solomon best practices for team communication
 ```
 
 ## How It Works
 
-1. **Multi-Channel Context**: Monitors all accessible channels for recent activity and topics
-2. **URL Grounding**: Extracts URLs from messages to provide additional context
-3. **Conflict Detection**: Analyzes conversations for tensions, emotional undertones, and misunderstandings
-4. **Diplomatic Response**: Provides balanced perspectives and constructive solutions using Solomon persona
-5. **Contextual Grounding**: Combines current conversation with broader team context
+### ReAct Intelligence Pattern
+1. **Query Analysis**: AI determines if context gathering is needed
+2. **Smart Search**: 3-phase adaptive search strategy
+   - Phase 1: Priority channels (recent 72h)
+   - Phase 2: All channels (recent 72h)
+   - Phase 3: Unlimited history search (if URLs/links requested)
+3. **URL Fetching**: Automatically fetches and summarizes web content
+4. **Context Integration**: Combines channel data with fetched content
+5. **Diplomatic Response**: Solomon persona provides balanced solutions
 
 ## Example Interactions
 
-**Team Conflict Resolution:**
+**Smart Content Analysis:**
+```
+solomon can you summarize last link's readme?
+
+🧠 Context needed: summarizing README content
+🎯 Searching 4 priority channels...
+✅ Found 1 URLs in 1 channels
+🔍 Query requests content analysis, fetching URLs...
+🌐 Fetching: https://github.com/ljm2ya/solomon-bot...
+✅ Fetched 1847 chars from https://github.com/ljm2ya...
+
+Solomon: Based on the README from the GitHub repository shared in #info:
+
+**Solomon Bot** is an AI conflict mediator for Slack that provides diplomatic
+conflict resolution. Key features include:
+- ReAct intelligence for smart context gathering
+- 3-phase adaptive search across all channels
+- Automatic URL content fetching and summarization
+- Multi-channel conversation grounding
+
+Setup requires Slack OAuth scopes and either Socket Mode or webhook configuration
+with ngrok. The bot responds to @mentions for conflict analysis and 'solomon'
+commands for direct questions.
+```
+
+**Conflict Resolution with Context:**
 ```
 User1: This approach won't work, it's too risky
 User2: We need to move fast, no time for perfect solutions
@@ -71,49 +117,43 @@ User2: We need to move fast, no time for perfect solutions
 
 Solomon: I see valid concerns from both perspectives. User1 raises important
 risk considerations that shouldn't be dismissed, while User2 highlights
-delivery pressures. Consider a phased approach: start with a minimal viable
+delivery pressures. Based on recent discussions in #project-alpha about
+similar trade-offs, consider a phased approach: start with a minimal viable
 version to address timing constraints, while building in safeguards to
 mitigate the identified risks...
 ```
 
-**Direct Consultation:**
-```
-solomon how do we handle conflicting priorities between teams?
-
-Solomon: Conflicting priorities often reflect different success metrics.
-Try: 1) Map each team's core objectives 2) Find shared goals 3) Establish
-transparent communication channels 4) Create joint decision-making frameworks
-5) Regular alignment check-ins. The key is shifting from competitive to
-collaborative mindset...
-```
-
 ## Troubleshooting
 
-**"Monitoring 0 channels" issue:**
-1. Use `/invite @solomon` in each channel
-2. Check OAuth scopes include `groups:read` for private channels
-3. Run `solomon debug` to see channel access status
+**Bot not responding in new channels:**
+- Solution: Use webhook mode with Event Subscriptions instead of Socket Mode
+- Or manually `/invite @solomon` in each channel for Socket Mode
+
+**URL verification failed in ngrok:**
+- Ensure both `webhook_server.py` is running AND ngrok is exposing port 3000
+- Check Slack Event Subscriptions URL: `https://your-ngrok-url.ngrok.io/slack/events`
 
 **Missing scope errors:**
-- Add required scopes in Slack App settings
+- Add required OAuth scopes in Slack App settings
 - Reinstall app to workspace after scope changes
 
-**Bot not responding:**
-- Check `.env` file has correct tokens
-- Verify Socket Mode is enabled
-- Ensure Event Subscriptions include `app_mention` and `message`
+**ReAct search not finding content:**
+- Content may be older than 72-hour limit
+- Try specific queries like "find github links" to trigger unlimited search
+- Check channel permissions with `solomon help`
 
 ## Architecture
 
-**Context Grounding Flow:**
+**Enhanced ReAct Flow:**
 ```
-Message → Multi-channel scan → URL extraction → Context building → Solomon analysis → Diplomatic response
+Query → AI Analysis → Smart Search (3-phase) → URL Fetching → Context Integration → Solomon Response
 ```
 
 **Files:**
-- `main.py` - Slack event handlers + multi-channel gathering (65 lines)
-- `ai.py` - OpenAI integration + Solomon persona (47 lines)
-- `requirements.txt` - Dependencies (3 packages)
-- `.env.example` - Configuration template
+- `webhook_server.py` - Main webhook server with ReAct intelligence (800+ lines)
+- `main.py` - Legacy Socket Mode server (500+ lines)
+- `ai.py` - OpenAI integration + Solomon persona (121 lines)
+- `shell.nix` - Nix development environment with ngrok
+- `WEBHOOK_SETUP.md` - Detailed webhook configuration guide
 
 
