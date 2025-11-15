@@ -6,22 +6,22 @@ Solomon Bot serves as your team's diplomatic mediator, automatically analyzing S
 
 ## Core Conflict Moderation Capabilities
 
-🤝 **Diplomatic Analysis**: Identifies tensions, misunderstandings, and communication breakdowns in real-time
-⚖️ **Balanced Mediation**: Provides neutral perspectives that acknowledge all viewpoints while fostering understanding
-🎯 **Solution-Oriented**: Suggests concrete next steps and common ground to resolve workplace conflicts
-🧠 **Context-Aware Intelligence**: Uses ReAct reasoning to gather comprehensive conversation history across all channels
-🔍 **Proactive Monitoring**: Automatically analyzes conversations when tagged to prevent conflicts from escalating
-💬 **Team Harmony Focus**: Maintains workplace relationships through gentle but firm diplomatic guidance
-🌐 **Multi-Language Support**: Automatically detects conversation language and responds in the same language for cultural alignment
+🤝 **Diplomatic Analysis**: Identifies tensions, misunderstandings, and communication breakdowns in real-time  
+⚖️ **Balanced Mediation**: Provides neutral perspectives that acknowledge all viewpoints while fostering understanding  
+🎯 **Solution-Oriented**: Suggests concrete next steps and common ground to resolve workplace conflicts  
+🧠 **Context-Aware Intelligence**: Uses ReAct reasoning to gather comprehensive conversation history across all channels  
+🔍 **Proactive Monitoring**: Automatically analyzes conversations when tagged to prevent conflicts from escalating  
+💬 **Team Harmony Focus**: Maintains workplace relationships through gentle but firm diplomatic guidance  
+🌐 **Multi-Language Support**: Automatically detects conversation language and responds in the same language for cultural alignment  
 
 ## Technical Features
 
-🧠 **ReAct Intelligence**: AI-powered query analysis that determines when and where to gather context
-🔍 **Smart Context Search**: 3-phase adaptive search (priority → all channels → unlimited history)
-🌐 **URL Content Fetching**: Automatically fetches and summarizes GitHub READMEs and web content
-📎 **Multi-Channel Grounding**: Gathers conversation context from all accessible channels
-💬 **Dual Commands**: `@mention` for full conflict analysis or `solomon [question]` for direct chat
-🌐 **Language Detection**: Automatically identifies language used in channels and responds appropriately
+🧠 **ReAct Architecture**: Reasoning-Acting loop determines context needs, executes search, integrates findings
+🔍 **3-Phase Context Search**: Priority channels (72h) → All channels (72h) → Unlimited history + URL fetch
+🌐 **Agentic URL Processing**: Autonomous GitHub README/web content extraction with summarization
+📎 **Multi-Channel Indexing**: Message aggregation across accessible channels with relevance scoring
+💬 **Dual Interface**: `@mention` triggers conversation analysis, `solomon [query]` enables direct interaction
+🌐 **Language Detection**: Pattern matching + OpenAI classification with confidence-based switching  
 
 ## Quick Setup
 
@@ -79,21 +79,19 @@ solomon help                         # Status and accessible channels
 
 ## How Conflict Moderation Works
 
-### AI-Powered Diplomatic Mediation
-1. **Conversation Analysis**: Solomon analyzes messages for emotional undertones, tensions, and misunderstandings
-2. **Context Gathering**: Uses ReAct intelligence to search relevant channels for background and history
-3. **Multi-Perspective Understanding**: Identifies all viewpoints and validates each person's concerns
-4. **Solution Synthesis**: Suggests constructive approaches that address underlying issues
-5. **Diplomatic Communication**: Delivers guidance with wisdom, neutrality, and respect for all parties
+### ReAct (Reasoning + Acting) Pipeline
+1. **Query Analysis**: LLM classifies user intent and determines context requirements using keyword extraction
+2. **Action Planning**: Selects search scope (priority channels/all channels/unlimited) based on query type
+3. **Context Execution**: Parallel message retrieval, URL detection, and content fetching via HTTP requests
+4. **Information Integration**: Aggregates channel data, URL summaries, and user history into structured context
+5. **Response Generation**: GPT-4o processes integrated context using Solomon persona for conflict-aware output
 
-### ReAct Grounding for Context
-1. **Query Analysis**: AI determines if workspace context gathering is needed for effective mediation
-2. **Smart Search**: 3-phase adaptive search strategy across conversation history
-   - Phase 1: Priority channels (recent 72h)
-   - Phase 2: All channels (recent 72h)
-   - Phase 3: Unlimited history search (if URLs/links requested)
-3. **URL Fetching**: Automatically fetches and summarizes shared resources
-4. **Context Integration**: Combines channel data with fetched content for comprehensive understanding
+### Solomon Persona Architecture
+1. **System Prompt**: Diplomatic moderator specializing in conflict resolution with direct Slack data access
+2. **Response Adaptation**: Language detection triggers culturally appropriate communication patterns
+3. **Conflict Analysis**: Identifies tensions, emotional undertones, and misunderstandings in conversation threads
+4. **Solution Framework**: Validates all perspectives while suggesting concrete resolution steps
+5. **Context Grounding**: References specific channels, users, and shared URLs for informed mediation
 
 ## Troubleshooting
 
@@ -127,26 +125,26 @@ Conversation → Tension Analysis → Context Gathering → Multi-Perspective Un
 Query → AI Analysis → Smart Search (3-phase) → URL Fetching → Context Integration → Solomon Response
 ```
 
-**Key Components:**
-- `main.py` - Slack integration + ReAct intelligence for context gathering (800+ lines)
-- `ai.py` - OpenAI integration + Solomon conflict mediation persona (144 lines)
-- `shell.nix` - Nix development environment with ngrok
+**Implementation:**
+- `main.py` - Flask webhook + Socket Mode integration, ReAct query analysis, 3-phase context search (800+ lines)
+- `ai.py` - OpenAI client wrapper, language detection algorithms, Solomon persona system prompt (320+ lines)
+- `shell.nix` - Nix environment with ngrok tunneling for Event Subscriptions
 
-**Solomon Persona Design:**
-- **Diplomatic Core**: Wise, neutral moderator specializing in workplace conflict resolution
-- **Multi-Perspective Validation**: Acknowledges all viewpoints while identifying common ground
-- **Solution-Oriented**: Focuses on constructive next steps rather than blame
-- **Context-Aware**: Uses comprehensive workspace history for informed mediation
-- **Culturally Adaptive**: Responds in detected language with appropriate cultural communication patterns
+**Technical Architecture:**
+- **ReAct Loop**: Query → Intent Classification → Scope Selection → Data Retrieval → Context Integration → Response
+- **Language Detection**: Regex patterns + OpenAI classification with confidence thresholds (high/medium/low)
+- **URL Processing**: HTTP requests to GitHub/web APIs with content extraction and summarization
+- **Context Indexing**: Message aggregation with timestamp filtering and relevance scoring
+- **Persona Implementation**: System prompt engineering with dynamic language adaptation
 
 ## Language Support
 
-**Auto-Detection**: Solomon automatically detects the primary language in conversations and responds accordingly
+**Detection Algorithm**: Regex pattern matching for character sets (Korean/Japanese/Chinese) + OpenAI classification for Latin scripts
 
-**Detection Process:**
-1. **Conversation Analysis**: Scans recent messages for language patterns
-2. **Confidence Assessment**: High/medium confidence triggers language switching
-3. **Cultural Adaptation**: Adjusts diplomatic style for cultural appropriateness
-4. **Fallback Protection**: Defaults to English if detection is uncertain
+**Implementation Process:**
+1. **Message Preprocessing**: URL/mention removal, text cleaning for classification accuracy
+2. **Dual Detection**: Pattern matching (high accuracy) + LLM classification (fallback) with confidence scoring
+3. **Persona Adaptation**: Dynamic system prompt modification for language-specific cultural communication norms
+4. **Fallback Logic**: English default when confidence below medium threshold or classification errors
 
 
