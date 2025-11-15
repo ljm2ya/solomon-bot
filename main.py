@@ -760,7 +760,7 @@ def handle_message(event):
                         enhanced_query = f"SYSTEM: You have targeted Slack workspace data below based on the user's query. Use this information to provide a specific, helpful response.\n\n{context_summary}\n\nUSER QUESTION: {user_query}\n\nINSTRUCTION: Reference specific findings from the channels above. Be precise about what you found and where."
 
                         print(f"💬 Generating response...")
-                        response = chat(enhanced_query)
+                        response = chat(enhanced_query, context_summary)
                     else:
                         response = chat(f"No relevant information found in workspace channels for: {user_query}")
                 else:
