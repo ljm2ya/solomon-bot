@@ -16,11 +16,11 @@ Solomon Bot serves as your team's diplomatic mediator, automatically analyzing S
 
 ## Technical Features
 
-🧠 **ReAct Architecture**: Reasoning-Acting loop determines context needs, executes search, integrates findings
-🔍 **3-Phase Context Search**: Priority channels (72h) → All channels (72h) → Unlimited history + URL fetch
-🌐 **Agentic URL Processing**: Autonomous GitHub README/web content extraction with summarization
-📎 **Multi-Channel Indexing**: Message aggregation across accessible channels with relevance scoring
-💬 **Dual Interface**: `@mention` triggers conversation analysis, `solomon [query]` enables direct interaction
+🧠 **ReAct Architecture**: Reasoning-Acting loop determines context needs, executes search, integrates findings  
+🔍 **3-Phase Context Search**: Priority channels (72h) → All channels (72h) → Unlimited history + URL fetch  
+🌐 **Agentic URL Processing**: Autonomous GitHub README/web content extraction with summarization  
+📎 **Multi-Channel Indexing**: Message aggregation across accessible channels with relevance scoring  
+💬 **Dual Interface**: `@mention` triggers conversation analysis, `solomon [query]` enables direct interaction  
 🌐 **Language Detection**: Pattern matching + OpenAI classification with confidence-based switching  
 
 ## Quick Setup
