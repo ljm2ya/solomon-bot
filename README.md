@@ -113,6 +113,11 @@ solomon help                         # Status and accessible channels
 - Try specific queries like "find github links" to trigger unlimited search
 - Check channel permissions with `solomon help`
 
+**URL fetching issues:**
+- Notion/Google Drive URLs require authentication - bot will indicate this
+- For private repositories, share content manually or make repos public
+- GitHub public repositories and documentation sites work best
+
 ## Architecture
 
 **Conflict Mediation Pipeline:**

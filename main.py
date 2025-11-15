@@ -8,9 +8,10 @@ from flask import Flask, request, jsonify
 import os
 import json
 import re
+import requests
 from dotenv import load_dotenv
 from slack_bolt import App
-from ai import chat, analyze_conversation_with_context
+from ai import chat, chat_with_solomon_persona, analyze_conversation_with_context
 from collections import defaultdict
 from datetime import datetime, timedelta
 
@@ -36,6 +37,7 @@ AVAILABLE CHANNELS: {channels_list}
 Return a JSON response with:
 {{
     "needs_context": true/false,
+    "should_fetch_urls": true/false,
     "priority_keywords": ["keyword1", "keyword2"],
     "target_channels": ["channel1", "channel2"],
     "reasoning": "why context is/isn't needed"
@@ -43,14 +45,17 @@ Return a JSON response with:
 
 Guidelines:
 - needs_context: true if query asks about workspace activity, shared content, recent discussions, or channel-specific info
+- should_fetch_urls: true if query would benefit from external content (GitHub repos, documentation, articles, links)
 - priority_keywords: extract key terms that might match channel names or content
 - target_channels: max 3 most relevant channel names (without #)
 - reasoning: brief explanation of decision
 
 Examples:
-- "what's been discussed lately?" -> needs_context: true, keywords: ["discuss", "recent"], channels: ["general", "project-*"]
-- "find github links" -> needs_context: true, keywords: ["github", "link"], channels: channels with "project", "dev", "code" in name
-- "hello" -> needs_context: false"""
+- "what's been discussed lately?" -> needs_context: true, should_fetch_urls: false
+- "explain this project" -> needs_context: true, should_fetch_urls: true (likely has GitHub links)
+- "find github links" -> needs_context: true, should_fetch_urls: true
+- "how to implement authentication" -> needs_context: true, should_fetch_urls: true (might find docs/tutorials)
+- "hello" -> needs_context: false, should_fetch_urls: false"""
 
         response = chat(analysis_prompt)
 
@@ -73,8 +78,13 @@ Examples:
             'find', 'search', 'recent', 'discuss', 'share', 'link', 'url', 'github', 'channel', 'what', 'who', 'when', 'summary'
         ])
 
+        should_fetch_urls = any(keyword in query_lower for keyword in [
+            'github', 'link', 'url', 'readme', 'doc', 'tutorial', 'guide', 'explain', 'how', 'implement', 'project', 'repository'
+        ])
+
         return {
             "needs_context": needs_context,
+            "should_fetch_urls": should_fetch_urls,
             "priority_keywords": user_query.split()[:3],
             "target_channels": available_channels[:3],
             "reasoning": "fallback analysis"
@@ -82,7 +92,7 @@ Examples:
 
     except Exception as e:
         print(f"❌ Error in analyze_query_for_context: {str(e)}")
-        return {"needs_context": False, "priority_keywords": [], "target_channels": [], "reasoning": "error occurred"}
+        return {"needs_context": False, "should_fetch_urls": False, "priority_keywords": [], "target_channels": [], "reasoning": "error occurred"}
 
 def priority_score_channels(available_channels, target_channels, keywords):
     """Score channels by relevance to query"""
@@ -375,39 +385,172 @@ def get_targeted_channel_context(client, analysis_result, limit_hours=72, max_me
         return {}
 
 def fetch_url_content(urls, user_query):
-    """Fetch and summarize content from URLs using WebFetch"""
+    """Fetch and summarize content from URLs using LLM-based content analysis"""
     url_content = {}
 
-    for url in urls[:3]:  # Limit to 3 URLs for performance
+    for url in urls[:5]:  # Increased limit to 5 URLs for better coverage
         try:
-            print(f"🌐 Fetching: {url[:50]}...")
+            print(f"🌐 Fetching: {url[:60]}...")
 
-            # Create a prompt based on user query
-            if 'readme' in user_query.lower():
-                fetch_prompt = "Extract and summarize the README content, focusing on: project purpose, key features, installation instructions, usage guidelines, and any important notes."
-            elif 'github' in user_query.lower():
-                fetch_prompt = "Summarize this GitHub repository: what it does, key features, and how to use it."
-            elif 'summarize' in user_query.lower():
-                fetch_prompt = "Provide a comprehensive summary of the main content, key points, and important information from this page."
+            # Create enhanced prompts based on URL type and user query
+            url_lower = url.lower()
+            query_lower = user_query.lower()
+
+            if 'readme' in query_lower or '/readme' in url_lower:
+                fetch_prompt = "Summarize this README: What does this project do? What are its key features and capabilities? How do users get started? Include any important technical details or requirements."
+            elif 'github.com' in url_lower:
+                if any(word in query_lower for word in ['explain', 'what', 'about']):
+                    fetch_prompt = "Explain this GitHub repository: What is the project's purpose? What technology stack does it use? What problems does it solve? Include key features and use cases."
+                else:
+                    fetch_prompt = "Summarize this GitHub repository including its purpose, main features, technology used, and how to use it."
+            elif any(word in query_lower for word in ['tutorial', 'guide', 'how to', 'implement']):
+                fetch_prompt = "Summarize this tutorial/guide: What does it teach? What are the main steps or concepts? What will someone learn from following this?"
+            elif any(word in query_lower for word in ['doc', 'documentation']):
+                fetch_prompt = "Summarize this documentation: What does it explain? What are the key concepts, features, or procedures covered? Include important technical details."
+            elif any(word in query_lower for word in ['explain', 'what', 'describe', 'tell me about']):
+                fetch_prompt = "Explain what this content is about: What is its main purpose? What key information does it contain? What should someone know about this?"
             else:
-                fetch_prompt = "Summarize the key content and main points from this page."
+                fetch_prompt = "Provide a comprehensive summary of this content including its main purpose, key points, and any important details that would be helpful to someone asking about it."
 
-            # Use WebFetch to get content
-            content = WebFetch(url=url, prompt=fetch_prompt)
+            # Detect if URL needs special handling
+            url_lower = url.lower()
+            if 'notion.so' in url_lower:
+                print(f"📝 Detected Notion URL: {url[:50]}...")
+                try:
+                    # Use Node.js script to fetch Notion content
+                    import subprocess
+                    result = subprocess.run(['node', 'notion_fetcher.js', url],
+                                          capture_output=True, text=True, timeout=30)
 
-            if content and len(content.strip()) > 50:  # Valid content
+                    if result.returncode == 0:
+                        import json
+                        stdout_content = result.stdout.strip()
+                        print(f"🔍 Node.js stdout: {stdout_content[:100]}...")  # Debug output
+                        print(f"🔍 Node.js stderr: {result.stderr[:100]}...")  # Debug output
+
+                        if stdout_content:
+                            try:
+                                notion_result = json.loads(stdout_content)
+                                if notion_result.get('success'):
+                                    notion_content = notion_result.get('content', '')
+                                    print(f"✅ Fetched {len(notion_content)} characters from Notion")
+                                    # Analyze the actual Notion content
+                                    analysis_prompt = f"{fetch_prompt}\n\nNotion page content:\n{notion_content}"
+                                    content = chat(analysis_prompt)
+                                else:
+                                    print(f"❌ Notion fetch failed: {notion_result.get('error', 'Unknown error')}")
+                                    content = chat(f"I was unable to access the Notion page at {url}. {fetch_prompt.lower()}")
+                            except json.JSONDecodeError as e:
+                                print(f"❌ JSON decode error: {e}")
+                                print(f"❌ Raw stdout: '{stdout_content}'")
+                                content = chat(f"I encountered an error parsing the Notion page response. {fetch_prompt.lower()}")
+                        else:
+                            print("❌ Empty stdout from Node.js script")
+                            content = chat(f"I was unable to access the Notion page at {url}. {fetch_prompt.lower()}")
+                    else:
+                        print(f"❌ Notion script failed with exit code {result.returncode}")
+                        print(f"❌ stderr: {result.stderr}")
+                        content = chat(f"I was unable to access the Notion page at {url}. {fetch_prompt.lower()}")
+
+                except Exception as e:
+                    print(f"❌ Error running Notion fetcher: {e}")
+                    content = chat(f"I encountered an error accessing the Notion page at {url}. {fetch_prompt.lower()}")
+
+            elif any(domain in url_lower for domain in ['docs.google.com', 'drive.google.com']):
+                print(f"🔒 Detected Google Docs URL: {url[:50]}...")
+                # For Google Docs, inform user that content can't be fetched
+                content = chat(f"The user shared a Google Docs/Drive link: {url}. This appears to be a private document that requires authentication. Please provide helpful advice about working with shared documents and team collaboration, but acknowledge that you cannot access the specific content of the document. Focus on general conflict resolution and communication strategies that would apply to document collaboration scenarios.")
+
+            else:
+                # Fetch actual URL content using HTTP requests for regular web pages
+                try:
+                    print(f"📡 Requesting content from {url[:50]}...")
+                    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+                    response = requests.get(url, headers=headers, timeout=10)
+                    response.raise_for_status()
+
+                    # Get the actual content
+                    raw_content = response.text
+
+                    # Extract meaningful text content
+                    if 'text/html' in response.headers.get('content-type', ''):
+                        # Enhanced text extraction without external dependencies
+                        clean_content = raw_content
+
+                        # Remove script tags and their content
+                        clean_content = re.sub(r'<script[^>]*>.*?</script>', '', clean_content, flags=re.DOTALL | re.IGNORECASE)
+
+                        # Remove style tags and their content
+                        clean_content = re.sub(r'<style[^>]*>.*?</style>', '', clean_content, flags=re.DOTALL | re.IGNORECASE)
+
+                        # Remove common non-content tags
+                        clean_content = re.sub(r'<(nav|footer|header|aside|noscript)[^>]*>.*?</\1>', '', clean_content, flags=re.DOTALL | re.IGNORECASE)
+
+                        # Extract content from main content areas preferentially
+                        main_content_match = re.search(r'<(main|article|div[^>]*class="[^"]*content[^"]*")[^>]*>(.*?)</\1>', clean_content, flags=re.DOTALL | re.IGNORECASE)
+                        if main_content_match:
+                            clean_content = main_content_match.group(2)
+
+                        # Remove all remaining HTML tags
+                        clean_content = re.sub(r'<[^>]+>', ' ', clean_content)
+
+                        # Clean up whitespace and decode HTML entities
+                        clean_content = re.sub(r'&nbsp;', ' ', clean_content)
+                        clean_content = re.sub(r'&[a-zA-Z]+;', ' ', clean_content)
+                        clean_content = re.sub(r'\s+', ' ', clean_content).strip()
+
+                    elif 'application/json' in response.headers.get('content-type', ''):
+                        # For JSON content, extract text values
+                        try:
+                            import json
+                            json_data = json.loads(raw_content)
+                            clean_content = json.dumps(json_data, indent=2)[:2000]
+                        except:
+                            clean_content = raw_content
+                    else:
+                        clean_content = raw_content
+
+                    # Limit content length for LLM processing
+                    if len(clean_content) > 8000:
+                        clean_content = clean_content[:8000] + "..."
+
+                    # Analyze the actual content with LLM
+                    analysis_prompt = f"{fetch_prompt}\n\nContent to analyze:\n{clean_content}"
+                    content = chat(analysis_prompt)
+
+                except Exception as fetch_error:
+                    print(f"⚠️ HTTP fetch failed for {url[:30]}: {fetch_error}")
+                    try:
+                        # Fallback: just ask LLM about the URL
+                        content = chat(f"Based on the URL {url}, {fetch_prompt.lower()}")
+                    except:
+                        content = f"Unable to access content from {url}"
+
+
+            if content and len(content.strip()) > 30:  # Lowered threshold for valid content
+                # Determine content type more accurately
+                content_type = 'web'
+                if 'github.com' in url_lower:
+                    content_type = 'github'
+                elif any(domain in url_lower for domain in ['docs.', 'documentation', 'api.']):
+                    content_type = 'documentation'
+                elif any(domain in url_lower for domain in ['blog', 'medium.', 'dev.to']):
+                    content_type = 'article'
+
                 url_content[url] = {
-                    'summary': content,
-                    'type': 'github' if 'github.com' in url else 'web'
+                    'summary': content.strip(),
+                    'type': content_type
                 }
-                print(f"✅ Fetched {len(content)} chars from {url[:30]}...")
+                print(f"✅ Fetched content from {url[:40]}...")
             else:
-                print(f"⚠️ No content fetched from {url[:30]}...")
+                print(f"⚠️ Insufficient content from {url[:40]}...")
 
         except Exception as e:
-            print(f"❌ Failed to fetch {url[:30]}: {str(e)}")
+            print(f"❌ Failed to fetch {url[:40]}: {str(e)}")
             continue
 
+    if url_content:
+        print(f"✅ Successfully processed {len(url_content)} URLs")
     return url_content
 
 def get_multi_channel_context(client, limit_hours=24, max_messages_per_channel=20):
@@ -596,7 +739,10 @@ def slack_events():
             if event_type == 'app_mention':
                 handle_app_mention(event)
             elif event_type == 'message' and event.get('text'):
-                handle_message(event)
+                # Skip messages that are also app mentions to prevent duplicates
+                text = event.get('text', '')
+                if not ('<@' in text and any(bot_id in text for bot_id in [os.getenv("BOT_USER_ID", ""), "U"])):
+                    handle_message(event)
             elif event_type == 'channel_created':
                 handle_channel_created(event)
         except Exception as e:
@@ -700,24 +846,44 @@ def handle_message(event):
                 except:
                     available_channels = ["general", "random"]  # fallback
 
+                # Step 1.5: Check for URLs directly in user's message first
+                user_urls = re.findall(r'http[s]?://\S+', user_query)
+
                 analysis_result = analyze_query_for_context(user_query, available_channels)
 
-                # Step 2: Gather targeted context if needed
+                # Step 2: Handle URLs in user's message first, then gather context if needed
+                url_content = {}
+                if user_urls and (analysis_result.get("should_fetch_urls", False) or
+                                  any(word in user_query.lower() for word in ['explain', 'summarize', 'what', 'describe'])):
+                    print(f"🔍 Found URLs in message, fetching content...")
+                    url_content = fetch_url_content(user_urls, user_query)
+
                 if analysis_result.get("needs_context"):
                     print(f"🧠 Context needed: {analysis_result.get('reasoning', 'relevant content search')}")
                     channel_context = get_targeted_channel_context(client, analysis_result)
 
                     # Step 3: Generate response with targeted context
-                    if channel_context:
-                        context_summary = "TARGETED SLACK WORKSPACE DATA:\n"
-                        total_messages = 0
-                        all_urls = []
-                        channel_details = []
+                    if channel_context or url_content:
+                        context_summary = ""
 
-                        for channel, data in channel_context.items():
-                            if data.get('message_count', 0) > 0:
-                                total_messages += data['message_count']
-                                all_urls.extend(data.get('urls_shared', []))
+                        # Add URL content first if available (from user's message)
+                        if url_content:
+                            context_summary += "FETCHED URL CONTENT:\n"
+                            for url, data in url_content.items():
+                                context_summary += f"\n🔗 {url}:\n"
+                                context_summary += f"{data['summary'][:800]}\n"
+
+                        # Add channel context if available
+                        if channel_context:
+                            context_summary += "\nSLACK WORKSPACE DATA:\n"
+                            total_messages = 0
+                            all_urls = []
+                            channel_details = []
+
+                            for channel, data in channel_context.items():
+                                if data.get('message_count', 0) > 0:
+                                    total_messages += data['message_count']
+                                    all_urls.extend(data.get('urls_shared', []))
 
                                 channel_detail = f"#{channel} (relevance: {data.get('relevance_score', 0)}):"
                                 if data.get('recent_messages'):
@@ -738,38 +904,97 @@ def handle_message(event):
                         context_summary += f"Keywords matched: {', '.join(analysis_result.get('priority_keywords', []))}\n"
                         context_summary += "\nRELEVANT CHANNELS:\n" + "\n".join(channel_details)
 
+                        # Step 3.5: Handle URL fetching based on AI analysis
+                        should_fetch_urls = analysis_result.get("should_fetch_urls", False)
+                        url_keywords = ['readme', 'summarize', 'content', 'explain', 'link', 'url', 'github', 'documentation']
+                        explicit_url_request = any(keyword in user_query.lower() for keyword in url_keywords)
+
+                        urls_to_fetch = []
+
                         if all_urls:
                             context_summary += f"\n\nFOUND URLS: {', '.join(list(set(all_urls))[:5])}"
 
-                            # Step 3.5: Fetch URL content if query requests it
-                            url_keywords = ['readme', 'summarize', 'content', 'what', 'explain']
-                            should_fetch_urls = any(keyword in user_query.lower() for keyword in url_keywords)
+                            if should_fetch_urls or explicit_url_request:
+                                urls_to_fetch = list(set(all_urls))
+                                print(f"🔍 Processing {len(urls_to_fetch)} URLs...")
 
-                            if should_fetch_urls:
-                                unique_urls = list(set(all_urls))
-                                print(f"🔍 Query requests content analysis, fetching URLs...")
-                                url_content = fetch_url_content(unique_urls, user_query)
+                        elif should_fetch_urls or explicit_url_request:
+                            # No URLs found but AI thinks we need them - proactive search
+                            print(f"🔍 Searching for relevant URLs across workspace...")
 
-                                if url_content:
-                                    context_summary += "\n\nFETCHED URL CONTENT:\n"
-                                    for url, data in url_content.items():
-                                        context_summary += f"\n🔗 {url}:\n"
-                                        context_summary += f"Type: {data['type'].upper()}\n"
-                                        context_summary += f"Summary: {data['summary'][:800]}...\n"  # Limit length
+                            # Search all accessible channels for URLs
+                            try:
+                                channels_response = client.conversations_list(types="public_channel", exclude_archived=True)
+                                if channels_response["ok"]:
+                                    accessible_channels = [(ch["id"], ch["name"]) for ch in channels_response["channels"] if ch.get("is_member")]
 
-                        enhanced_query = f"SYSTEM: You have targeted Slack workspace data below based on the user's query. Use this information to provide a specific, helpful response.\n\n{context_summary}\n\nUSER QUESTION: {user_query}\n\nINSTRUCTION: Reference specific findings from the channels above. Be precise about what you found and where."
+                                    # Look for URLs in recent messages across all channels
+                                    extended_urls = []
+                                    for channel_id, channel_name in accessible_channels[:10]:  # Limit to 10 channels for performance
+                                        try:
+                                            recent_messages = client.conversations_history(channel=channel_id, limit=20)
+                                            if recent_messages["ok"]:
+                                                for msg in recent_messages["messages"]:
+                                                    if 'text' in msg:
+                                                        msg_urls = re.findall(r'http[s]?://\S+', msg['text'])
+                                                        extended_urls.extend(msg_urls)
+                                        except:
+                                            continue
+
+                                    if extended_urls:
+                                        urls_to_fetch = list(set(extended_urls))[:5]  # Limit to 5 most recent URLs
+                                        context_summary += f"\n\nEXTENDED SEARCH URLS: {', '.join(urls_to_fetch)}"
+                                        print(f"✅ Found {len(urls_to_fetch)} URLs")
+                            except Exception as e:
+                                print(f"❌ Extended URL search failed: {str(e)}")
+
+                        # Fetch URL content if we have URLs to process
+                        if urls_to_fetch:
+                            url_content = fetch_url_content(urls_to_fetch, user_query)
+
+                            if url_content:
+                                context_summary += "\n\nFETCHED URL CONTENT:\n"
+                                for url, data in url_content.items():
+                                    context_summary += f"\n🔗 {url}:\n"
+                                    context_summary += f"{data['summary'][:800]}\n"  # Remove type info, limit length
+
+                        # Create enhanced query that prioritizes URL content
+                        if url_content:
+                            enhanced_query = f"SYSTEM: You have targeted Slack workspace data including fetched URL content below. PRIORITIZE the URL content in your response as it contains the most relevant information for the user's query.\n\n{context_summary}\n\nUSER QUESTION: {user_query}\n\nINSTRUCTION: Base your response primarily on the FETCHED URL CONTENT above. Reference specific information from the URLs and supplement with channel context where relevant. Be precise about what you found and where."
+                        else:
+                            enhanced_query = f"SYSTEM: You have targeted Slack workspace data below based on the user's query. Use this information to provide a specific, helpful response.\n\n{context_summary}\n\nUSER QUESTION: {user_query}\n\nINSTRUCTION: Reference specific findings from the channels above. Be precise about what you found and where."
 
                         print(f"💬 Generating response...")
-                        response = chat(enhanced_query, context_summary)
+                        response = chat_with_solomon_persona(enhanced_query, context_summary)
+                    elif url_content:
+                        # Only URL content available, no channel context
+                        context_summary = "FETCHED URL CONTENT:\n"
+                        for url, data in url_content.items():
+                            context_summary += f"\n🔗 {url}:\n"
+                            context_summary += f"{data['summary'][:800]}\n"
+
+                        enhanced_query = f"SYSTEM: You have fetched URL content below. Base your response on this content.\n\n{context_summary}\n\nUSER QUESTION: {user_query}\n\nINSTRUCTION: Use the URL content to provide a helpful response."
+                        print(f"💬 Generating response from URL content...")
+                        response = chat_with_solomon_persona(enhanced_query, context_summary)
                     else:
-                        response = chat(f"No relevant information found in workspace channels for: {user_query}")
+                        response = chat_with_solomon_persona(f"No relevant information found in workspace channels for: {user_query}")
+                elif url_content:
+                    # Only URL content, no workspace context needed
+                    context_summary = "FETCHED URL CONTENT:\n"
+                    for url, data in url_content.items():
+                        context_summary += f"\n🔗 {url}:\n"
+                        context_summary += f"{data['summary'][:800]}\n"
+
+                    enhanced_query = f"SYSTEM: You have fetched URL content below. Base your response on this content.\n\n{context_summary}\n\nUSER QUESTION: {user_query}\n\nINSTRUCTION: Use the URL content to provide a helpful response."
+                    print(f"💬 Generating response from URL content...")
+                    response = chat_with_solomon_persona(enhanced_query, context_summary)
                 else:
                     print(f"💬 No context needed")
-                    response = chat(user_query)
+                    response = chat_with_solomon_persona(user_query)
 
             except Exception as e:
                 print(f"❌ Error, using fallback")
-                response = chat(user_query)
+                response = chat_with_solomon_persona(user_query)
 
             client.chat_postMessage(channel=event["channel"], text=response)
 

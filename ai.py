@@ -141,24 +141,19 @@ def chat_with_context(query, context="", detected_language=None):
     """Chat with context grounding and conflict moderation persona"""
 
     # Build language-aware system prompt
-    system_prompt = """You are Solomon, a wise and diplomatic moderator specializing in conflict resolution and team harmony. You have DIRECT ACCESS to Slack workspace data and can see messages, channels, and URLs.
+    system_prompt = """You are Solomon, a diplomatic workplace mediator with direct access to Slack workspace data including messages, channels, and URLs.
 
-Core abilities:
-1. ANALYZE conversations for tension, misunderstandings, or conflicts
-2. PROVIDE balanced perspectives that acknowledge all viewpoints
-3. SUGGEST constructive solutions and common ground
-4. MAINTAIN neutrality while fostering understanding
-5. Use GENTLE but FIRM guidance to redirect negative patterns
+Your approach combines wisdom with practical guidance. You analyze situations comprehensively, acknowledge different perspectives, and offer balanced solutions that address underlying concerns while maintaining team relationships.
 
-IMPORTANT: When you receive SLACK WORKSPACE DATA or CHANNEL CONTEXT, you HAVE this information and can reference it directly. Do NOT say you "can't access" channels or external content - you have the data provided in the context.
+Communication style:
+- Address tensions and misunderstandings with measured insight
+- Validate concerns from all parties without taking sides
+- Provide actionable guidance that considers broader context
+- Reference specific workspace information when available
+- Maintain professional warmth while being direct about solutions
+- Keep responses focused and substantive without emotional excess
 
-When responding to Slack conversations:
-- Use the provided channel data and messages to give informed responses
-- Reference specific channels, users, or shared URLs when relevant
-- Address underlying concerns using the broader workspace context
-- Validate emotions while focusing on solutions
-- Suggest concrete next steps for resolution
-- Keep responses concise but thoughtful"""
+When you receive workspace context, integrate it naturally into your response. Avoid numbered lists or overly structured advice - instead weave insights together in a cohesive, thoughtful manner that feels conversational yet authoritative."""
 
     # Add language preference if detected
     if detected_language and detected_language[0] != "en":
@@ -266,17 +261,31 @@ Common language codes: en=English, es=Spanish, fr=French, de=German, it=Italian,
         print(f"❌ Error in query language detection: {str(e)}")
         return "en", "English", "low"
 
-def chat(query: str, context=""):
-    """Enhanced chat function with language detection support"""
+def chat_with_solomon_persona(query: str, context=""):
+    """Chat function that properly invokes Solomon persona for direct queries"""
     # Detect query language
     detected_language = detect_query_language(query)
     language_code, language_name, confidence = detected_language
 
+    # Apply Solomon persona to the query
+    if language_code != "en" and confidence in ["high", "medium"]:
+        enhanced_query = f"""Please provide guidance on this question with your diplomatic expertise. Consider multiple perspectives and offer balanced, practical advice. RESPOND IN {language_name.upper()} to match the query language.
+
+USER QUESTION: {query}"""
+    else:
+        enhanced_query = f"""Please provide guidance on this question with your diplomatic expertise. Consider multiple perspectives and offer balanced, practical advice.
+
+USER QUESTION: {query}"""
+
     if confidence in ["high", "medium"] and language_code != "en":
         print(f"🌐 Query language detected: {language_name} ({language_code})")
-        return chat_with_context(query, context, detected_language)
+        return chat_with_context(enhanced_query, context, detected_language)
     else:
-        return chat_with_context(query, context)
+        return chat_with_context(enhanced_query, context)
+
+def chat(query: str, context=""):
+    """Enhanced chat function with language detection support (legacy compatibility)"""
+    return chat_with_solomon_persona(query, context)
 
 def analyze_conversation_with_context(messages_by_user: dict, user_names: dict, channel_context: dict = None) -> str:
     """
@@ -343,23 +352,13 @@ def analyze_conversation_with_context(messages_by_user: dict, user_names: dict, 
 
     # Use conflict moderation persona with language awareness
     if language_code != "en" and confidence in ["high", "medium"]:
-        analysis_query = f"""Please analyze this conversation for:
-1. Any tensions, conflicts, or misunderstandings
-2. Emotional undertones and group dynamics
-3. Constructive ways to address concerns
-4. Common ground and shared goals
-5. Next steps for productive dialogue
+        analysis_query = f"""Analyze this conversation to understand any tensions, misunderstandings, or emotional undercurrents. Look for different perspectives at play and identify both areas of disagreement and potential common ground. Consider what constructive steps might help the team move forward together.
 
-Provide a diplomatic summary that promotes understanding. RESPOND IN {language_name.upper()} to match the conversation language."""
+Provide thoughtful guidance that acknowledges all viewpoints while suggesting practical approaches for resolution. RESPOND IN {language_name.upper()} to match the conversation language."""
     else:
-        analysis_query = """Please analyze this conversation for:
-1. Any tensions, conflicts, or misunderstandings
-2. Emotional undertones and group dynamics
-3. Constructive ways to address concerns
-4. Common ground and shared goals
-5. Next steps for productive dialogue
+        analysis_query = """Analyze this conversation to understand any tensions, misunderstandings, or emotional undercurrents. Look for different perspectives at play and identify both areas of disagreement and potential common ground. Consider what constructive steps might help the team move forward together.
 
-Provide a diplomatic summary that promotes understanding."""
+Provide thoughtful guidance that acknowledges all viewpoints while suggesting practical approaches for resolution."""
 
     return chat_with_context(analysis_query, context, detected_language if confidence in ["high", "medium"] else None)
 
